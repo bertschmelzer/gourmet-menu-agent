@@ -44,10 +44,10 @@ ausgewaehlte_koeche = st.multiselect("Deine Lieblings-Köche:", verfuegbare_koec
 praferenzen = st.text_area("Allgemeine Allergien / No-Gos (WG/Familie):", value=default_praf, key="praferenzen_text")
 
 if st.button("💾 Grundeinstellungen sichern", use_container_width=True):
-    local_storage.setItem("saved_koeche", json.dumps(ausgewaehlte_koeche))
-    local_storage.setItem("saved_praferenzen", praferenzen)
+    local_storage.setItem("saved_koeche", json.dumps(ausgewaehlte_koeche), key="save_k")
+    local_storage.setItem("saved_praferenzen", praferenzen, key="save_p")
     if OPENAI_API_KEY:
-        local_storage.setItem("saved_openai_key", OPENAI_API_KEY)
+        local_storage.setItem("saved_openai_key", OPENAI_API_KEY, key="save_o")
     st.success("Grundeinstellungen gesichert!")
 
 st.divider()
