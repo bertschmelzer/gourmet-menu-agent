@@ -5,19 +5,19 @@ from openai import OpenAI
 from streamlit_local_storage import LocalStorage
 
 # App-Konfiguration für mobile Ansicht
-st.set_page_config(page_title="Gourmet Menu Agent", page_icon="👨‍🍳", layout="centered")
+st.set_page_config(page_title="Family Gourmet Menu Agent", page_icon="👨‍🍳", layout="centered")
 
-st.title("🍳 Schweizer Gourmet-Agent")
-st.write("Deine Präferenzen sind sicher gespeichert. Bereit für Coop Schweiz.")
+st.title("🍳 Schweizer Familien-Wochenplaner")
+st.write("Massgeschneiderte Menüs für die ganze Familie – direkt zu Coop.")
 
-# Lokaler Speicher für das Handy-Gedächtnis initialisieren
+# Lokaler Speicher initialisieren
 local_storage = LocalStorage()
 
-# API Keys in der Seitenleiste
+# --- SIDEBAR: OPENAI SCHLÜSSEL ---
+st.sidebar.subheader("🔑 API-Schlüssel")
 OPENAI_API_KEY = st.sidebar.text_input("OpenAI API Key", type="password")
-PEPESTO_API_KEY = st.sidebar.text_input("Pepesto API Key", type="password")
 
-# --- ERWEITERTE SPEZIAL-KÖCHE ---
+# --- KÖCHE & STAMM-PRÄFERENZEN ---
 verfuegbare_koeche = [
     "Betty Bossi (Klassisch Schweizerisch & Geling-Garantie)",
     "Jamie Oliver (Schnell, Unkompliziert, '5-Ingredients' Stil)",
@@ -28,106 +28,142 @@ verfuegbare_koeche = [
     "Nadia Damaso (Eat Better Not Less, Gesund & Superfoods)"
 ]
 
-st.subheader("⚙️ Deine gespeicherten Einstellungen")
+st.subheader("⚙️ Grundeinstellungen (Dauerhaft)")
 
-# Lade alte Einstellungen vom Handy, falls vorhanden
 saved_koeche = local_storage.getItem("saved_koeche")
 saved_praferenzen = local_storage.getItem("saved_praferenzen")
+saved_openai_key = local_storage.getItem("saved_openai_key")
 
-# Fallback, wenn die App das erste Mal geöffnet wird
+if saved_openai_key and not OPENAI_API_KEY:
+    OPENAI_API_KEY = saved_openai_key
+
 default_koeche = json.loads(saved_koeche) if saved_koeche else [verfuegbare_koeche[0]]
 default_praf = saved_praferenzen if saved_praferenzen else "gesund, saisonal, keine Fertigprodukte"
 
-# 1. Multi-Select für Köche (lädt automatisch die gespeicherte Auswahl)
-ausgewaehlte_koeche = st.multiselect(
-    "Deine Lieblings-Köche:",
-    verfuegbare_koeche,
-    default=default_koeche,
-    key="koeche_select"
-)
+ausgewaehlte_koeche = st.multiselect("Deine Lieblings-Köche:", verfuegbare_koeche, default=default_koeche, key="koeche_select")
+praferenzen = st.text_area("Allgemeine Allergien / No-Gos (WG/Familie):", value=default_praf, key="praferenzen_text")
 
-# 2. Textfeld für Allergien/No-Gos (lädt automatisch deine Vorlieben)
-praferenzen = st.text_area(
-    "Deine dauerhaften Vorlieben & Allergien:",
-    value=default_praf,
-    key="praferenzen_text"
-)
-
-# --- SPEICHER-LOGIK ---
-if st.button("💾 Einstellungen auf dem Handy sichern", use_container_width=True):
+if st.button("💾 Grundeinstellungen sichern", use_container_width=True):
     local_storage.setItem("saved_koeche", json.dumps(ausgewaehlte_koeche))
     local_storage.setItem("saved_praferenzen", praferenzen)
-    st.success("Erfolgreich gemerkt! Die App weiss das auch beim nächsten Mal noch.")
+    if OPENAI_API_KEY:
+        local_storage.setItem("saved_openai_key", OPENAI_API_KEY)
+    st.success("Grundeinstellungen gesichert!")
 
 st.divider()
 
-# --- HAUPTTEIL: AGENTEN-LOGIK ---
-if not OPENAI_API_KEY or not PEPESTO_API_KEY:
-    st.warning("Bitte gib deine API-Keys in der Seitenleiste ein, um die App zu nutzen.")
+# --- NEU: DYNAMISCHE WOCHENPLANUNG PRO TAG ---
+st.subheader("📅 Dein Wochenfahrplan (Montag - Sonntag)")
+
+tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+wochen_konfiguration = {}
+
+# Wir erstellen für jeden Wochentag eine einklappbare Box (Expander)
+for tag in tage:
+    with st.expander(f"📌 {tag} konfigurieren", expanded=(tag == "Montag")):
+        st.write(f"**Personenanzahl für {tag}:**")
+        col1, col2 = st.columns(2)
+        with col1:
+            erwachsene = st.number_input(f"Erwachsene ({tag})", min_value=0, max_value=10, value=2, step=1, key=f"erw_{tag}")
+        with col2:
+            kinder = st.number_input(f"Kinder ({tag})", min_value=0, max_value=10, value=2, step=1, key=f"kind_{tag}")
+            
+        st.write(f"**Mahlzeiten & Wünsche für {tag}:**")
+        
+        # Frühstücks-Option
+        fruehstueck = st.checkbox(f"Frühstück einplanen (+ extra Zutaten)", value=False, key=f"frueh_{tag}")
+        extra_fruehstueck = ""
+        if fruehstueck:
+            extra_fruehstueck = st.text_input(f"Extra Frühstücks-Wünsche ({tag})", placeholder="z.B. Munder-Zopf, Hafermilch, Konfitüre", key=f"frueh_text_{tag}")
+            
+        # Abendessen-Fleischoption
+        fleisch_option = st.selectbox(
+            f"Abendessen Fleisch-Regel ({tag})",
+            ["Egal (KI entscheidet)", "Strikt OHNE rotes Fleisch (Geflügel/Fisch erlaubt)", "Komplett Vegetarisch / Vegie-Tag", "Mit rotem Fleisch (Rind/Schwein)"],
+            key=f"fleisch_{tag}"
+        )
+        
+        Spezialwunsch = st.text_input(f"Spezialwunsch für {tag} (Optional)", placeholder="z.B. 'Schnelles Gericht unter 20 Min' oder 'Pasta'", key=f"wunsch_{tag}")
+        
+        # Daten für die KI sammeln
+        wochen_konfiguration[tag] = {
+            "erwachsene": erwachsene,
+            "kinder": kinder,
+            "fruehstueck_aktiv": fruehstueck,
+            "fruehstueck_zutaten": extra_fruehstueck,
+            "fleisch_regel": fleisch_option,
+            "spezialwunsch": spezialwunsch
+        }
+
+st.divider()
+
+# --- AGENTEN-LOGIK ---
+if not OPENAI_API_KEY:
+    st.warning("👈 Bitte öffne die Seitenleiste links und trage deinen OpenAI API-Schlüssel ein.")
 else:
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    tages_wunsch = st.text_input(
-        "Spezielle Wünsche für dieses Menü? (Optional)",
-        placeholder="z.B. 'Heute Lust auf Pasta' oder 'Etwas für kalte Tage'"
-    )
-
-    if st.button("Mein Gourmet-Menü planen ✨", use_container_width=True):
-        with st.spinner("Dein persönlicher Chefkoch kreiert die Rezepte..."):
+    if st.button("🚀 Gesamten Gourmet-Wochenplan generieren", type="primary", use_container_width=True):
+        with st.spinner("Dein Privatchef kalkuliert den Wocheneinkauf..."):
+            
+            # Wir wandeln die gesammelten Tages-Daten in Text für die KI um
+            konfig_text = json.dumps(wochen_konfiguration, ensure_ascii=False, indent=2)
             
             prompt = f"""
-            Du bist ein Schweizer Starkoch-Sterne-Agent. Erstelle einen Menüplan auf Deutsch.
+            Du bist ein präziser Schweizer Familien-Sterne-Agent. Erstelle einen strukturierten Menüplan für die kommende Woche (Montag bis Sonntag) auf Deutsch.
             
-            STRENGE VORGABEN FÜR DIE GERICHTE:
-            - Inspiriert vom spezifischen Kochstil dieser Köche: {', '.join(ausgewaehlte_koeche)}.
-            - Beachte diese Benutzer-Präferenzen/Allergien konsequent: {praferenzen}.
-            - Berücksichtige diesen aktuellen Wunsch: {tages_wunsch if tages_wunsch else 'Keine Sonderwünsche'}.
+            DEINE WOCHENVORGABE PRO TAG (Personen, Frühstück & Fleisch-Regeln):
+            {konfig_text}
             
-            Einkaufsliste-Regeln für die Schweiz:
-            - Übersetze alle Zutaten in exakte, bei Coop Schweiz erhältliche Produkte.
-            - Verwende Schweizer Begriffe (z.B. Poulet, Rüebli, Halbrahm, Peperoni, Gschwellti).
+            ALLGEMEINE VORGABEN:
+            - Stil der Köche: {', '.join(ausgewaehlte_koeche)}.
+            - Stamm-Präferenzen: {praferenzen}.
+            
+            EINKAUFSLISTE-BERECHNUNG (SEHR WICHTIG):
+            1. Berechne die Portionsmengen exakt basierend auf der angegebenen Anzahl Erwachsener und Kinder pro Tag (Kinder essen kleinere Portionen, passe Gramm-Angaben bei Fleisch/Beilagen an!).
+            2. Wenn 'fruehstueck_aktiv' auf true steht, füge die unter 'fruehstueck_zutaten' genannten Extra-Produkte (z.B. Zopf, Butter, Milch) direkt der Einkaufsliste hinzu.
+            3. Beachte strikt die 'fleisch_regel' des jeweiligen Tages beim Abendessen.
+            4. Addiere identische Zutaten über die ganze Woche hinweg zusammen (z.B. nicht 3x separat Zwiebeln auflisten, sondern die Gesamtmenge akkumulieren).
+            5. Übersetze alle Artikel in bei Coop Schweiz erhältliche Produkte unter Verwendung von Schweizer Begriffen (Poulet, Rüebli, Halbrahm, Peperoni).
             
             GIB DIE ANTWORT STRIKT ALS JSON-OBJEKT IN FOLGENDEM FORMAT ZURÜCK:
             {{
-                "menu_text": "Hier steht das Menü. Erwähne im Text elegant, wie du die Stile von z.B. Ottolenghi, Caminada oder Betty Bossi kombiniert hast.",
+                "menu_text": "Hier steht der detaillierte Wochenplan gegliedert nach Wochentagen. Erwähne kurz, wie viele Personen am jeweiligen Tag bekocht werden, ob es Frühstück gibt und welche Fleisch-Regel gilt.",
                 "shopping_list": [
                     {{"name": "Produktname", "quantity": 1, "unit": "Stück"}}
                 ]
             }}
             """
 
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-            )
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                )
 
-            result = json.loads(response.choices.message.content)
-            st.session_state["menu_text"] = result["menu_text"]
-            st.session_state["shopping_list"] = result["shopping_list"]
+                result = json.loads(response.choices.message.content)
+                st.session_state["menu_text"] = result["menu_text"]
+                st.session_state["shopping_list"] = result["shopping_list"]
+            except Exception as e:
+                st.error(f"Fehler bei der KI-Anfrage: {e}")
 
-    # Menü-Anzeige & Coop-Export
+    # Menü-Anzeige & Kostenloser Coop-Warenkorb-Link
     if "menu_text" in st.session_state:
-        st.subheader("👨‍🍳 Dein Menüvorschlag:")
+        st.subheader("👨‍🍳 Dein persönlicher Wochenspeiseplan:")
         st.info(st.session_state["menu_text"])
 
-        if st.button("🛒 Zutaten in den Coop-Warenkorb legen", type="primary", use_container_width=True):
-            with st.spinner("Warenkorb wird bei Coop befüllt..."):
+        if st.button("🛒 Gesamten Wocheneinkauf in den Coop-Warenkorb legen", type="primary", use_container_width=True):
+            with st.spinner("Wocheneinkauf wird über den Gratis-Kanal übertragen..."):
+                
                 coop_url = "https://pepesto.com"
-                payload = {
-                    "items": st.session_state["shopping_list"],
-                    "options": {"prefer_budget": True},
-                }
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {PEPESTO_API_KEY}",
-                }
-
-                res = requests.post(coop_url, json=payload, headers=headers)
+                payload = {"items": st.session_state["shopping_list"]}
+                
+                res = requests.post(coop_url, json=payload)
 
                 if res.status_code == 200:
                     redirect_url = res.json().get("redirect_url")
-                    st.success("Warenkorb ist bereit!")
-                    st.link_button("👉 Jetzt zu Coop wechseln & bestellen", redirect_url, use_container_width=True)
+                    st.success("Warenkorb für die ganze Woche ist bereit!")
+                    st.link_button("👉 Jetzt zu Coop wechseln & Wocheneinkauf prüfen", redirect_url, use_container_width=True)
                 else:
                     st.error("Fehler bei der Coop-Übermittlung.")
