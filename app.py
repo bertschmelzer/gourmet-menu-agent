@@ -43,6 +43,7 @@ default_praf = saved_praferenzen if saved_praferenzen else "gesund, saisonal, ke
 ausgewaehlte_koeche = st.multiselect("Deine Lieblings-Köche:", verfuegbare_koeche, default=default_koeche, key="koeche_select")
 praferenzen = st.text_area("Allgemeine Allergien / No-Gos (WG/Familie):", value=default_praf, key="praferenzen_text")
 
+# Korrigierte Speicher-Logik mit eindeutigen Keys gegen den DuplicateElementKey-Fehler
 if st.button("💾 Grundeinstellungen sichern", use_container_width=True):
     local_storage.setItem("saved_koeche", json.dumps(ausgewaehlte_koeche), key="save_k")
     local_storage.setItem("saved_praferenzen", praferenzen, key="save_p")
@@ -52,13 +53,13 @@ if st.button("💾 Grundeinstellungen sichern", use_container_width=True):
 
 st.divider()
 
-# --- NEU: DYNAMISCHE WOCHENPLANUNG PRO TAG ---
+# --- DYNAMISCHE WOCHENPLANUNG PRO TAG ---
 st.subheader("📅 Dein Wochenfahrplan (Montag - Sonntag)")
 
 tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 wochen_konfiguration = {}
 
-# Wir erstellen für jeden Wochentag eine einklappbare Box (Expander)
+# Einklappbare Boxen pro Wochentag
 for tag in tage:
     with st.expander(f"📌 {tag} konfigurieren", expanded=(tag == "Montag")):
         st.write(f"**Personenanzahl für {tag}:**")
@@ -83,7 +84,8 @@ for tag in tage:
             key=f"fleisch_{tag}"
         )
         
-        spezialwunsch = st.text_input(f"spezialwunsch für {tag} (Optional)", placeholder="z.B. 'Schnelles Gericht unter 20 Min' oder 'Pasta'", key=f"wunsch_{tag}")
+        # Korrigierter kleingeschriebener Variablenname
+        spezialwunsch = st.text_input(f"Spezialwunsch für {tag} (Optional)", placeholder="z.B. 'Schnelles Gericht unter 20 Min' oder 'Pasta'", key=f"wunsch_{tag}")
         
         # Daten für die KI sammeln
         wochen_konfiguration[tag] = {
@@ -106,7 +108,6 @@ else:
     if st.button("🚀 Gesamten Gourmet-Wochenplan generieren", type="primary", use_container_width=True):
         with st.spinner("Dein Privatchef kalkuliert den Wocheneinkauf..."):
             
-            # Wir wandeln die gesammelten Tages-Daten in Text für die KI um
             konfig_text = json.dumps(wochen_konfiguration, ensure_ascii=False, indent=2)
             
             prompt = f"""
@@ -142,7 +143,10 @@ else:
                     response_format={"type": "json_object"},
                 )
 
-                result = json.loads(response.choices.message.content)
+                # KORREKTUR: Neuer, sicherer Zugriff auf den Text der OpenAI-Antwort
+                raw_content = response.choices[0].message.content
+                result = json.loads(raw_content)
+                
                 st.session_state["menu_text"] = result["menu_text"]
                 st.session_state["shopping_list"] = result["shopping_list"]
             except Exception as e:
