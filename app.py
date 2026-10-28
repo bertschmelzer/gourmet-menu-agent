@@ -83,7 +83,7 @@ for tag in tage:
             key=f"fleisch_{tag}"
         )
         
-        Spezialwunsch = st.text_input(f"Spezialwunsch für {tag} (Optional)", placeholder="z.B. 'Schnelles Gericht unter 20 Min' oder 'Pasta'", key=f"wunsch_{tag}")
+        spezialwunsch = st.text_input(f"spezialwunsch für {tag} (Optional)", placeholder="z.B. 'Schnelles Gericht unter 20 Min' oder 'Pasta'", key=f"wunsch_{tag}")
         
         # Daten für die KI sammeln
         wochen_konfiguration[tag] = {
