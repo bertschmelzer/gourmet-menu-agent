@@ -1,0 +1,4 @@
+streamlit
+streamlit-local-storage
+requests
+openai
