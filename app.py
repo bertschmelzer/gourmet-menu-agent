@@ -37,13 +37,12 @@ saved_openai_key = local_storage.getItem("saved_openai_key")
 if saved_openai_key and not OPENAI_API_KEY:
     OPENAI_API_KEY = saved_openai_key
 
-default_koeche = json.loads(saved_koeche) if saved_koeche else [verfuegbare_koeche[0]]
+default_koeche = json.loads(saved_koeche) if saved_koeche else [verfuegbare_koeche]
 default_praf = saved_praferenzen if saved_praferenzen else "gesund, saisonal, keine Fertigprodukte"
 
 ausgewaehlte_koeche = st.multiselect("Deine Lieblings-Köche:", verfuegbare_koeche, default=default_koeche, key="koeche_select")
 praferenzen = st.text_area("Allgemeine Allergien / No-Gos (WG/Familie):", value=default_praf, key="praferenzen_text")
 
-# Korrigierte Speicher-Logik mit eindeutigen Keys gegen den DuplicateElementKey-Fehler
 if st.button("💾 Grundeinstellungen sichern", use_container_width=True):
     local_storage.setItem("saved_koeche", json.dumps(ausgewaehlte_koeche), key="save_k")
     local_storage.setItem("saved_praferenzen", praferenzen, key="save_p")
@@ -59,7 +58,6 @@ st.subheader("📅 Dein Wochenfahrplan (Montag - Sonntag)")
 tage = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 wochen_konfiguration = {}
 
-# Einklappbare Boxen pro Wochentag
 for tag in tage:
     with st.expander(f"📌 {tag} konfigurieren", expanded=(tag == "Montag")):
         st.write(f"**Personenanzahl für {tag}:**")
@@ -71,23 +69,19 @@ for tag in tage:
             
         st.write(f"**Mahlzeiten & Wünsche für {tag}:**")
         
-        # Frühstücks-Option
         fruehstueck = st.checkbox(f"Frühstück einplanen (+ extra Zutaten)", value=False, key=f"frueh_{tag}")
         extra_fruehstueck = ""
         if fruehstueck:
             extra_fruehstueck = st.text_input(f"Extra Frühstücks-Wünsche ({tag})", placeholder="z.B. Munder-Zopf, Hafermilch, Konfitüre", key=f"frueh_text_{tag}")
             
-        # Abendessen-Fleischoption
         fleisch_option = st.selectbox(
             f"Abendessen Fleisch-Regel ({tag})",
             ["Egal (KI entscheidet)", "Strikt OHNE rotes Fleisch (Geflügel/Fisch erlaubt)", "Komplett Vegetarisch / Vegie-Tag", "Mit rotem Fleisch (Rind/Schwein)"],
             key=f"fleisch_{tag}"
         )
         
-        # Korrigierter kleingeschriebener Variablenname
         spezialwunsch = st.text_input(f"Spezialwunsch für {tag} (Optional)", placeholder="z.B. 'Schnelles Gericht unter 20 Min' oder 'Pasta'", key=f"wunsch_{tag}")
         
-        # Daten für die KI sammeln
         wochen_konfiguration[tag] = {
             "erwachsene": erwachsene,
             "kinder": kinder,
@@ -122,9 +116,9 @@ else:
             
             EINKAUFSLISTE-BERECHNUNG (SEHR WICHTIG):
             1. Berechne die Portionsmengen exakt basierend auf der angegebenen Anzahl Erwachsener und Kinder pro Tag (Kinder essen kleinere Portionen, passe Gramm-Angaben bei Fleisch/Beilagen an!).
-            2. Wenn 'fruehstueck_aktiv' auf true steht, füge die unter 'fruehstueck_zutaten' genannten Extra-Produkte (z.B. Zopf, Butter, Milch) direkt der Einkaufsliste hinzu.
+            2. Wenn 'fruehstueck_aktiv' on true steht, füge die unter 'fruehstueck_zutaten' genannten Extra-Produkte (z.B. Zopf, Butter, Milch) direkt der Einkaufsliste hinzu.
             3. Beachte strikt die 'fleisch_regel' des jeweiligen Tages beim Abendessen.
-            4. Addiere identische Zutaten über die ganze Woche hinweg zusammen (z.B. nicht 3x separat Zwiebeln auflisten, sondern die Gesamtmenge akkumulieren).
+            4. Addiere identische Zutaten über die ganze Woche hinweg zusammen (z.B. die Gesamtmenge akkumulieren).
             5. Übersetze alle Artikel in bei Coop Schweiz erhältliche Produkte unter Verwendung von Schweizer Begriffen (Poulet, Rüebli, Halbrahm, Peperoni).
             
             GIB DIE ANTWORT STRIKT ALS JSON-OBJEKT IN FOLGENDEM FORMAT ZURÜCK:
@@ -143,8 +137,7 @@ else:
                     response_format={"type": "json_object"},
                 )
 
-                # KORREKTUR: Neuer, sicherer Zugriff auf den Text der OpenAI-Antwort
-                raw_content = response.choices[0].message.content
+                raw_content = response.choices.message.content
                 result = json.loads(raw_content)
                 
                 st.session_state["menu_text"] = result["menu_text"]
@@ -163,11 +156,21 @@ else:
                 coop_url = "https://pepesto.com"
                 payload = {"items": st.session_state["shopping_list"]}
                 
-                res = requests.post(coop_url, json=payload)
+                # KORREKTUR: Wir übergeben zwingend den JSON Header, damit Pepesto versteht, dass wir Daten senden
+                headers = {"Content-Type": "application/json"}
+                
+                try:
+                    res = requests.post(coop_url, json=payload, headers=headers)
 
-                if res.status_code == 200:
-                    redirect_url = res.json().get("redirect_url")
-                    st.success("Warenkorb für die ganze Woche ist bereit!")
-                    st.link_button("👉 Jetzt zu Coop wechseln & Wocheneinkauf prüfen", redirect_url, use_container_width=True)
-                else:
-                    st.error("Fehler bei der Coop-Übermittlung.")
+                    if res.status_code == 200:
+                        # KORREKTUR: Abfangen, falls die Antwort trotzdem kein gültiges JSON ist
+                        try:
+                            redirect_url = res.json().get("redirect_url")
+                            st.success("Warenkorb für die ganze Woche ist bereit!")
+                            st.link_button("👉 Jetzt zu Coop wechseln & Wocheneinkauf prüfen", redirect_url, use_container_width=True)
+                        except ValueError:
+                            st.error(f"Der Server hat unerwartet geantwortet. Antworttext: {res.text}")
+                    else:
+                        st.error(f"Fehler bei der Coop-Übermittlung. Status-Code: {res.status_code}. Text: {res.text}")
+                except Exception as net_error:
+                    st.error(f"Netzwerkfehler: {net_error}")
