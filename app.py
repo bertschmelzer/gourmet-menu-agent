@@ -36,7 +36,7 @@ saved_openai_key = local_storage.getItem("saved_openai_key")
 if saved_openai_key and not OPENAI_API_KEY:
     OPENAI_API_KEY = saved_openai_key
 
-default_koeche = json.loads(saved_koeche) if saved_koeche else [verfuegbare_koeche[0]]
+default_koeche = json.loads(saved_koeche) if saved_koeche else [verfuegbare_koeche]
 default_praf = saved_praferenzen if saved_praferenzen else "gesund, saisonal, keine Fertigprodukte"
 
 ausgewaehlte_koeche = st.multiselect("Deine Lieblings-Köche:", verfuegbare_koeche, default=default_koeche, key="koeche_select")
@@ -98,7 +98,8 @@ else:
 
     # SCHRITT 1: 3 Vorschläge pro Tag generieren
     if st.button("🔍 Schritt 1: Je 3 Gerichtsvorschläge generieren", type="primary", use_container_width=True):
-        with St.spinner("KI berechnet jeweils 3 Vorschläge pro Tag..."):
+        # KORREKTUR: st.spinner kleingeschrieben
+        with st.spinner("KI berechnet jeweils 3 Vorschläge pro Tag..."):
             konfig_text = json.dumps(wochen_konfiguration, ensure_ascii=False, indent=2)
             
             prompt_vorschlaege = f"""
