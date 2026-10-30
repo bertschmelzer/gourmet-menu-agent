@@ -8,7 +8,7 @@ from streamlit_local_storage import LocalStorage
 st.set_page_config(page_title="Family Gourmet Menu Agent", page_icon="👨‍🍳", layout="centered")
 
 st.title("🍳 Schweizer Familien-Wochenplaner")
-st.write("Massgeschneiderte Menüs für die ganze Familie – direkt zu Coop.")
+st.write("Massgeschneiderte Menüs für die ganze Familie – Unabhängig & Kostenlos.")
 
 # Lokaler Speicher initialisieren
 local_storage = LocalStorage()
@@ -115,18 +115,16 @@ else:
             - Stamm-Präferenzen: {praferenzen}.
             
             EINKAUFSLISTE-BERECHNUNG (SEHR WICHTIG):
-            1. Berechne die Portionsmengen exakt basierend auf der angegebenen Anzahl Erwachsener und Kinder pro Tag (Kinder essen kleinere Portionen, passe Gramm-Angaben bei Fleisch/Beilagen an!).
-            2. Wenn 'fruehstueck_aktiv' on true steht, füge die unter 'fruehstueck_zutaten' genannten Extra-Produkte (z.B. Zopf, Butter, Milch) direkt der Einkaufsliste hinzu.
-            3. Beachte strikt die 'fleisch_regel' des jeweiligen Tages beim Abendessen.
-            4. Addiere identische Zutaten über die ganze Woche hinweg zusammen (z.B. die Gesamtmenge akkumulieren).
-            5. Übersetze alle Artikel in bei Coop Schweiz erhältliche Produkte unter Verwendung von Schweizer Begriffen (Poulet, Rüebli, Halbrahm, Peperoni).
+            1. Berechne die Portionsmengen exakt basierend auf der angegebenen Anzahl Erwachsener und Kinder pro Tag.
+            2. Wenn 'fruehstueck_aktiv' auf true steht, füge die Frühstücks-Wünsche direkt hinzu.
+            3. Beachte strikt die Fleisch-Regel des jeweiligen Tages beim Abendessen.
+            4. Addiere identische Zutaten über die ganze Woche hinweg zusammen (Gesamtmenge akkumulieren).
+            5. Verwende Schweizer Begriffe (Poulet, Rüebli, Halbrahm, Peperoni).
             
             GIB DIE ANTWORT STRIKT ALS JSON-OBJEKT IN FOLGENDEM FORMAT ZURÜCK:
             {{
-                "menu_text": "Hier steht der detaillierte Wochenplan gegliedert nach Wochentagen. Erwähne kurz, wie viele Personen am jeweiligen Tag bekocht werden, ob es Frühstück gibt und welche Fleisch-Regel gilt.",
-                "shopping_list": [
-                    {{"name": "Produktname", "quantity": 1, "unit": "Stück"}}
-                ]
+                "menu_text": "Hier steht der detaillierte Wochenplan gegliedert nach Wochentagen.",
+                "shopping_list_text": "Produkt 1 (Menge)\\nProdukt 2 (Menge)\\n"
             }}
             """
 
@@ -137,40 +135,25 @@ else:
                     response_format={"type": "json_object"},
                 )
 
-                raw_content = response.choices.message.content
+                # JETZT KORREKT: Zugriff auf das ERSTE Element der Liste über [0]
+                raw_content = response.choices[0].message.content
                 result = json.loads(raw_content)
                 
                 st.session_state["menu_text"] = result["menu_text"]
-                st.session_state["shopping_list"] = result["shopping_list"]
+                st.session_state["shopping_list_text"] = result["shopping_list_text"]
             except Exception as e:
                 st.error(f"Fehler bei der KI-Anfrage: {e}")
 
-    # Menü-Anzeige & Kostenloser Coop-Warenkorb-Link
+    # Menü-Anzeige & Einkaufsliste
     if "menu_text" in st.session_state:
         st.subheader("👨‍🍳 Dein persönlicher Wochenspeiseplan:")
         st.info(st.session_state["menu_text"])
 
-        if st.button("🛒 Gesamten Wocheneinkauf in den Coop-Warenkorb legen", type="primary", use_container_width=True):
-            with st.spinner("Wocheneinkauf wird über den Gratis-Kanal übertragen..."):
-                
-                coop_url = "https://pepesto.com"
-                payload = {"items": st.session_state["shopping_list"]}
-                
-                # KORREKTUR: Wir übergeben zwingend den JSON Header, damit Pepesto versteht, dass wir Daten senden
-                headers = {"Content-Type": "application/json"}
-                
-                try:
-                    res = requests.post(coop_url, json=payload, headers=headers)
-
-                    if res.status_code == 200:
-                        # KORREKTUR: Abfangen, falls die Antwort trotzdem kein gültiges JSON ist
-                        try:
-                            redirect_url = res.json().get("redirect_url")
-                            st.success("Warenkorb für die ganze Woche ist bereit!")
-                            st.link_button("👉 Jetzt zu Coop wechseln & Wocheneinkauf prüfen", redirect_url, use_container_width=True)
-                        except ValueError:
-                            st.error(f"Der Server hat unerwartet geantwortet. Antworttext: {res.text}")
-                    else:
-                        st.error(f"Fehler bei der Coop-Übermittlung. Status-Code: {res.status_code}. Text: {res.text}")
-                except Exception as net_error:
-                    st.error(f"Netzwerkfehler: {net_error}")
+        st.subheader("🛒 Deine akkumulierte Einkaufsliste für die Woche:")
+        
+        # Zeige die Liste in einer Textbox an, die man mit 1 Klick kopieren kann
+        st.text_area("Kopiere diese Liste für die Coop- oder Migros-App:", 
+                     value=st.session_state["shopping_list_text"], 
+                     height=300)
+        
+        st.success("💡 Tipp: Kopiere den Text oben und füge ihn in deiner Coop- oder Migros-App unter 'Zutaten importieren' / Freitext-Suche ein, um alles sofort im Warenkorb zu haben!")
